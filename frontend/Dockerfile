@@ -1,4 +1,4 @@
-FROM node:10
+FROM node:16
 
 WORKDIR /app
 
@@ -14,11 +14,7 @@ RUN npm install axios --save
 RUN npm install react-router-dom
 RUN npm install react-icons --save
 
-
 COPY . ./
-
-RUN useradd user
-USER user
 
 CMD npm start
 

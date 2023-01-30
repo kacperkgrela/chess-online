@@ -1,7 +1,7 @@
 from django.core.mail import EmailMessage
-from celery.decorators import task
+from celery import shared_task
 
-@task(name='send_email')
+@shared_task(name='send_email')
 def send_emali(data):
     email = EmailMessage(subject=data['header'], body=data['text'],
                          to=[data['who']])

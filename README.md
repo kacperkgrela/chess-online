@@ -1,6 +1,4 @@
 # chess-onlin
 
 
-test Paweł
-test
-kacper
+aplikacja sluzaca do gry w szachy
