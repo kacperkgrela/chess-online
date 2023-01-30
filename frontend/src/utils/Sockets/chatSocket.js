@@ -1,4 +1,8 @@
-class WebSocketInstance {
+import {frontendToBackendCommands, backendToFrontendCommands} from './SocketCommands';
+import {logout, refreshToken} from '../../actions/auth';
+
+
+class ChatWebSocket {
 
   constructor(){
     this.callbacks = {}
@@ -9,11 +13,11 @@ class WebSocketInstance {
     try{
       this.socket = new WebSocket(path)
     }catch{
-      return console.log('error connection')
+      return console.log('error chat connection')
     }
 
     this.socket.onopen = () => {
-      console.log("websocket open")
+      console.log("chat websocket open")
     };
 
     this.socket.onmessage = (event) => {
@@ -21,11 +25,12 @@ class WebSocketInstance {
     }
 
     this.socket.onerror = (event)=> {
+      refreshToken(()=>{this.socket = new WebSocket(path)}, logout)
       console.log(event.message)
     }
 
     this.socket.onclose = (event) => {
-      console.log('websocket closed')
+      console.log('chat websocket closed')
       this.connect();
     }
   }
@@ -38,11 +43,11 @@ class WebSocketInstance {
     data = JSON.parse(data)
     const command = data.command;
 
-    if (command === "messages"){
+    if (command === backendToFrontendCommands.UPDATE_MESSAGES){
       this.callbacks[command](data.messages)
     }
 
-    if (command === "new_message"){
+    if (command === backendToFrontendCommands.UPDATE_NEW_MESSAGE){
       this.callbacks[command](data.message)
     }
 
@@ -50,7 +55,7 @@ class WebSocketInstance {
   
   fetchMessages(chatId){
     const data = {
-      command: "fetch_messages",
+      command: frontendToBackendCommands.FETCH_MESSAGES,
       chatId: chatId,
     };
     this.sendMessage(data)
@@ -58,12 +63,13 @@ class WebSocketInstance {
 
   sendChatMessage(message){
     const data = {
-      command: "new_message",
+      command: frontendToBackendCommands.SEND_NEW_MESSAGE,
       message: message.content,
       chatId: message.chatId
     }
     this.sendMessage(data)
   }
+
 
   sendMessage(data){
     try{
@@ -74,9 +80,10 @@ class WebSocketInstance {
   }
 
   addCallbacks(fetchMessagesCallback, newMessageCallback) {
-    this.callbacks["messages"] = fetchMessagesCallback;
-    this.callbacks["new_message"] = newMessageCallback;
+    this.callbacks[backendToFrontendCommands.UPDATE_MESSAGES] = fetchMessagesCallback;
+    this.callbacks[backendToFrontendCommands.UPDATE_NEW_MESSAGE] = newMessageCallback;
   }
+
 
   // tell if socket is ready
   status(){
@@ -85,5 +92,5 @@ class WebSocketInstance {
 
 }
 
-const Socket = new WebSocketInstance()
-export default Socket;
+const chatSocket = new ChatWebSocket()
+export default chatSocket;

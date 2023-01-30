@@ -1,7 +1,7 @@
-import {backend_url} from '../utils/endpoints';
+import {backend_url} from '../utils/paths/API';
 import axios from 'axios';
 import {history} from '../utils/history';
-import {urls} from '../utils/urls';
+import {urls} from '../utils/paths/urls';
 
 export const logout = () => {
     axios.post(backend_url.LOGOUT,{
@@ -74,4 +74,23 @@ export const sendMailToChangePassword = (email) => {
     }).catch((error) => {
         console.log(error.request.response)
     })
+}
+
+
+export const refreshToken = (callback1, callback2) => {
+    axios.post(backend_url.REFRESH_TOKEN, {
+        "refresh" : localStorage.getItem('refresh_token') 
+    }).then((response) => {
+        localStorage.removeItem('access_token')
+        localStorage.setItem('access_token', response.data.access);
+        if (callback1){
+            callback1()
+        }
+    }).catch((err) => {
+        if (callback2){
+            callback2()
+        }
+       return err
+    });
+
 }
