@@ -11,7 +11,7 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 class UsernameSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['pk', 'username']
+        fields = ['username']
 
   
 class RegisterSerializer(serializers.ModelSerializer):
@@ -27,22 +27,6 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = User
         fields = ['username', 'email', 'password1', 'password2']
 
-    def validate_username(self, value):
-        if User.objects.filter(username=value).exists():
-            if not User.objects.get(username=value).is_verified:
-                return True
-            raise ValidationError("Username already exist", 
-                                  code=status.HTTP_409_CONFLICT)
-
-        return value 
-
-    def validate_email(self, value):
-        if User.objects.filter(email=value, is_verified=True).exists():
-            if not User.objects.get(email=value).is_verified:
-                return True
-            raise ValidationError("Email already exist", 
-                                  code=status.HTTP_409_CONFLICT)
-        return value
         
     # extended function for create user
     def create(self, data):
@@ -50,22 +34,27 @@ class RegisterSerializer(serializers.ModelSerializer):
         password2 = data['password2'] 
 
         if password1 != password2:
-            return ValidationError("passwords not match")
+            return ValidationError({'error': "passwords not match"})
 
         # check if user already exist but is not verfied yet
         if User.objects.filter(username=data['username'], email=data['email'], 
                                is_verified=False).exists():
 
-            return User.objects.get(username=data['username'], email=['email'])
+            return User.objects.get(username=data['username'], email=data['email'])
+        elif User.objects.filter(email=data['email'], is_verified=False).exists():
+            raise ValidationError({'error': "email already have account"}, 
+                                  code=status.HTTP_409_CONFLICT)
+        elif not User.objects.filter(email=data['email']).exists():
 
-        user = User(
-            username=data['username'],
-            email=data['email'],
-        )
-        user.set_password(password1)
-        user.save()
-        return user
-
+            user = User(
+                username=data['username'],
+                email=data['email'],
+            )
+            user.set_password(password1)
+            user.save()
+            return user
+        raise ValidationError({'error': "email already have account"}, 
+                                  code=status.HTTP_409_CONFLICT)
 
 class LoginSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(max_length=45, required=True, write_only=True)
@@ -84,15 +73,15 @@ class LoginSerializer(serializers.ModelSerializer):
         user = auth.authenticate(email=email, password=password)
 
         if user is None:
-            raise ValidationError({"error": 'wrong password or email'},
+            raise ValidationError('wrong password or email',
                                   code=status.HTTP_400_BAD_REQUEST)
         
         if not user.is_active:
-            raise ValidationError({"error": 'Account not active'},
+            raise ValidationError('Account not active',
                                   code=status.HTTP_406_NOT_ACCEPTABLE)
 
         if not user.is_verified:
-            raise ValidationError({"error": 'Account not verfied, first active your profile'},
+            raise ValidationError('Account not verfied, first active your profile',
                                   code=status.HTTP_400_BAD_REQUEST)
 
         tokens = user.tokens()
@@ -106,27 +95,32 @@ class ResetPasswordSerializer(serializers.Serializer):
         fields = ['email']
 
 class SetNewPasswordSerializer(serializers.Serializer):
-    password = serializers.CharField(max_length=68, write_only=True)
+    password1 = serializers.CharField(max_length=68, write_only=True)
+    password2 = serializers.CharField(max_length=68, write_only=True)
     token = serializers.CharField(write_only=True)
     uidb64 = serializers.CharField(write_only=True)
 
     class Meta:
-        fields = ['password', 'token', 'uidb64']
+        fields = ['password1', 'password2', 'token', 'uidb64']
 
     def validate(self, attrs):
         try:
-            password = attrs.get('password')
+            password1 = attrs.get('password1')
+            password2 = attrs.get('password2')
             token = attrs.get('token')
             uidb64 = attrs.get('uidb64')
 
             id = force_str(urlsafe_base64_decode(uidb64))
-            user = User.objects.ger(id=id)
+            user = User.objects.get(id=id)
             if not PasswordResetTokenGenerator().check_token(user, token):
                 raise AuthenticationFailed('The reset link is invalid', 401)
-            user.set_password(password)
-            user.save()
-            return user
-
-        except Exception:
-            raise AuthenticationFailed('The reset link is invalid', 401)
+            
+            if password1 == password2:
+                user.set_password(password1)
+                user.save()
+                return user
+            else:
+                raise ValidationError('passwords are not the same!', code=status.HTTP_406_NOT_ACCEPTABLE)
+        except:
+            raise ValidationError('bad request, check if url is right', code=status.HTTP_400_BAD_REQUEST)
         return super().validate(attrs)

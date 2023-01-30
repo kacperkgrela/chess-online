@@ -1,5 +1,6 @@
 version: "3.8"
 
+
 networks:
   webweb:
     ipam:
@@ -24,13 +25,26 @@ services:
         networks:
           webweb:
             ipv4_address: "172.16.238.10"
+    redis:
+        image: redis
+        container_name: redis
+        restart: always
+        ports:
+          - "6379:6379"
+        networks:
+          webweb:
+            ipv4_address: "172.16.238.13"
     backend:
         build: ./backend 
         container_name: backend
         restart: on-failure
+        environment:
+          - EMAIL_HOST_USER= ${EMAIL_HOST_USER}
+          - EMAIL_HOST_PASSWORD= ${EMAIL_HOST_PASSWORD}
+          - GITHUB_WORKFLOW= ${GITHUB_WORKFLOW}
         volumes:
             - ./backend:/app/backend
-        command:  bash -c "./wait-for.sh db:5432 -- python3 manage.py makemigrations && 
+        command:  bash -c "python3 manage.py makemigrations && 
                            python3 manage.py migrate &&
                            python3 manage.py runserver 172.16.238.11:8000"
         ports:
@@ -47,7 +61,6 @@ services:
         container_name: frontend
         volumes:
             - ./frontend:/app
-            - /app/node_modules
         ports:
             - "3000:3000"
         command: npm start
@@ -56,3 +69,16 @@ services:
         networks:
           webweb:
             ipv4_address: "172.16.238.12"
+    celery:
+        build: ./backend
+        container_name: celery
+        command: bash -c "celery -A base worker -l INFO"
+        volumes:
+            - ./backend:/app/backend
+        depends_on:
+            - db
+            - redis
+            - backend
+        networks:
+          webweb:
+            ipv4_address: "172.16.238.14"

@@ -20,6 +20,8 @@ from django.utils.encoding import smart_str, force_str, smart_bytes, DjangoUnico
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.contrib.sites.shortcuts import get_current_site
 from django.urls import reverse
+from base.development import REDIRECT_PAGE
+from django.shortcuts import redirect
 
 class GetUsers(ListAPIView):
     permission_classes = [IsAuthenticated]
@@ -44,7 +46,7 @@ class RegisterAPI(APIView):
     def post(self, request):
         serializer = serializers.RegisterSerializer(data=request.data)
         if serializer.is_valid(raise_exception=True):
-            serializer.save()
+            serializer.create(data=request.data)
 
             user = User.objects.get(email=serializer.data['email'])
             token = RefreshToken.for_user(user).access_token
@@ -56,8 +58,8 @@ class RegisterAPI(APIView):
             email_body = f'Hi {user.username} click this link to active account:  \n {absurl}'
             mail = {'text': email_body, 'who': user.email, 'header': 'Verify your email'}
 
-            send_emali(mail)
-            return Response("Check your mail for activation mail", status=status.HTTP_201_CREATED)
+            send_emali.delay(mail)
+            return Response({"mail send": "Check your mail for activation mail"}, status=status.HTTP_201_CREATED)
 
 class VerifyEmail(APIView):
     permission_classes = [AllowAny]
@@ -72,22 +74,21 @@ class VerifyEmail(APIView):
                 user.is_verified = True
                 user.save()
 
-            return Response('Successfully activated', status=status.HTTP_200_OK)
+            return Response({'email': 'Successfully activated'}, status=status.HTTP_200_OK)
         except jwt.ExpiredSignatureError:
-            return Response('token expired', status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'token expired'}, status=status.HTTP_400_BAD_REQUEST)
         except jwt.exceptions.DecodeError:
-            return Response('invalid token', status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'invalid token'}, status=status.HTTP_400_BAD_REQUEST)
 
 class LogoutAPI(APIView):
-    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         try:
             refresh_token = request.data["refresh"]
             RefreshToken(refresh_token).blacklist()
         except TokenError:
-            return Response('Token is invalid or expired')
-        return Response('Successful logout', status=status.HTTP_204_NO_CONTENT)
+            return Response({'error': 'Token is invalid or expired'})
+        return Response({'success': 'Successful logout'}, status=status.HTTP_204_NO_CONTENT)
 
 
 
@@ -108,9 +109,9 @@ class PasswordResetAPI(generics.GenericAPIView):
             absurl='http://'+current_site+relativeLink
             email_body = f'Hi {user.username} click this link to reset password:  \n {absurl}'
             mail = {'text': email_body, 'who': user.email, 'header': 'The chess club - reset password'}
-            send_emali(mail)
+            send_emali.delay(mail)
 
-        return Response('Check your mail, there should be reset password link', status=status.HTTP_200_OK)
+            return Response({'mail send': 'Check your mail, there should be reset password link'}, status=status.HTTP_200_OK)
 
 
 class TokenRegisterCheckAPI(generics.GenericAPIView):
@@ -124,12 +125,12 @@ class TokenRegisterCheckAPI(generics.GenericAPIView):
             user=User.objects.get(id=id)
             
             if not PasswordResetTokenGenerator().check_token(user, token):
-                return Response('token has expired or is not valid', status=status.HTTP_401_UNAUTHORIZED)
-            return Response({'success': True, 'message': 'credentials valid', 'uidb64': uidb64, 'token': token}, status=status.HTTP_200_OK)
+                return Response({'error': 'token has expired or is not valid'}, status=status.HTTP_401_UNAUTHORIZED)
+            return redirect(REDIRECT_PAGE+'?token='+str(token)+'&uidb64='+str(uidb64))
 
         except DjangoUnicodeDecodeError:
             if not PasswordResetTokenGenerator().check_token(user):
-                return Response('token is not valid', status=status.HTTP_401_UNAUTHORIZED)
+                return Response({'error': 'token is not valid'}, status=status.HTTP_401_UNAUTHORIZED)
 
 
 class SetNewPasswordAPI(generics.GenericAPIView):
